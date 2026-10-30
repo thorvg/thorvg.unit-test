@@ -599,4 +599,64 @@ TEST_CASE("GL Intersection", "[tvgGlEngine]")
     REQUIRE(Initializer::term() == Result::Success);
 }
 
+TEST_CASE("GL Stroke Update", "[tvgGlEngine]")
+{
+    TestGLEngine engine;
+
+    REQUIRE(Initializer::init() == Result::Success);
+    {
+        auto canvas = std::unique_ptr<GlCanvas>(GlCanvas::gen());
+        REQUIRE(canvas);
+        engine.target(canvas.get());
+
+        // Render a frame, so each edit below updates a shape that has already been drawn
+        auto render = [&]() {
+            REQUIRE(canvas->update() == Result::Success);
+            REQUIRE(canvas->draw() == Result::Success);
+            REQUIRE(canvas->sync() == Result::Success);
+        };
+
+        // A stroked rect: 6px left of its edge is outside a 2px stroke, inside a 20px one
+        auto rect = Shape::gen();
+        REQUIRE(rect);
+        REQUIRE(rect->appendRect(40, 40, 20, 20) == Result::Success);
+        REQUIRE(rect->strokeFill(255, 0, 0) == Result::Success);
+        REQUIRE(rect->strokeWidth(2) == Result::Success);
+        REQUIRE(canvas->add(rect) == Result::Success);
+        render();
+        REQUIRE(rect->intersects(34, 50) == false);
+
+        // Case1. A wider stroke covers the point and grows the bounds
+        REQUIRE(rect->strokeWidth(20) == Result::Success);
+        render();
+        REQUIRE(rect->intersects(34, 50) == true);
+
+        float x, y, w, h;
+        REQUIRE(rect->bounds(&x, &y, &w, &h) == Result::Success);
+        REQUIRE(w == Approx(40.0f).margin(0.5f));
+
+        // Case2. A narrower stroke no longer covers it
+        REQUIRE(rect->strokeWidth(2) == Result::Success);
+        render();
+        REQUIRE(rect->intersects(34, 50) == false);
+
+        // Case3. A square cap reaches past the end of an open line, a butt cap does not
+        auto line = Shape::gen();
+        REQUIRE(line);
+        REQUIRE(line->moveTo(20, 80) == Result::Success);
+        REQUIRE(line->lineTo(80, 80) == Result::Success);
+        REQUIRE(line->strokeFill(255, 0, 0) == Result::Success);
+        REQUIRE(line->strokeWidth(10) == Result::Success);
+        REQUIRE(line->strokeCap(StrokeCap::Butt) == Result::Success);
+        REQUIRE(canvas->add(line) == Result::Success);
+        render();
+        REQUIRE(line->intersects(17, 80) == false);
+
+        REQUIRE(line->strokeCap(StrokeCap::Square) == Result::Success);
+        render();
+        REQUIRE(line->intersects(17, 80) == true);
+    }
+    REQUIRE(Initializer::term() == Result::Success);
+}
+
 #endif

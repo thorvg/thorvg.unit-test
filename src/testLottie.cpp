@@ -27,6 +27,8 @@
 #endif
 #include <fstream>
 #include <cstring>
+#include <thread>
+#include <vector>
 #include "testFramework.h"
 
 using namespace tvg;
@@ -462,5 +464,39 @@ TEST_CASE("Lottie Embedded Fonts Share", "[tvgLottie]")
     }
     REQUIRE(Initializer::term() == Result::Success);
 }
+
+#ifdef THORVG_LOTTIE_EXPRESSIONS_SUPPORT
+TEST_CASE("Lottie Expressions Thread Reuse", "[tvgLottie]")
+{
+    REQUIRE(Initializer::init(0) == Result::Success);
+    {
+        ifstream file(TEST_DIR"/test5.lot", ios::binary);
+        REQUIRE(file.is_open());
+        string json((istreambuf_iterator<char>(file)), istreambuf_iterator<char>());
+        file.close();
+
+        auto keep = Animation::gen();
+        keep->picture()->load(json.c_str(), json.size(), "lottie+json", nullptr, true);
+        for (int i = 0; i < 6; ++i) {
+            std::thread t([&] {
+                std::vector<uint32_t> buf(10 * 10);
+                auto canvas = SwCanvas::gen();
+                canvas->target(buf.data(), 10, 10, 10, ColorSpace::ARGB8888);
+                auto anim = Animation::gen();
+                anim->picture()->load(json.c_str(), json.size(), "lottie+json", nullptr, true);
+                anim->frame(i);
+                canvas->add(anim->picture());
+                canvas->draw(true);
+                canvas->sync();
+                delete(canvas);
+                delete(anim);
+            });
+            t.join();
+        }
+        delete(keep);
+    }
+    REQUIRE(Initializer::term() == Result::Success);
+}
+#endif
 
 #endif
